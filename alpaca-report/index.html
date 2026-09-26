@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer"><!-- never leak the page URL to the CDNs -->
+<!-- Content-Security-Policy: even injected code could only send data to Alpaca (connect-src), not to anyone else.
+     'unsafe-inline' is needed for this page's own inline <script>/<style> blocks. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://paper-api.alpaca.markets https://api.alpaca.markets; img-src data:; base-uri 'none'; form-action 'none'">
+<title>Alpaca Trade Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
+<style>
+:root{
+  --bg:#f5f4f0; --surface:#fcfcfb; --surface-2:#f0efec; --border:#e4e3de;
+  --text:#0b0b0b; --text-2:#52514e; --text-3:#8a8983;
+  --accent:#2a78d6; --accent-soft:rgba(42,120,214,.10);
+  --pos:#177a3a; --pos-bg:rgba(12,163,12,.10); --pos-bar:#1baf7a;
+  --neg:#c03434; --neg-bg:rgba(208,59,59,.10); --neg-bar:#e34948;
+  --grid:#e4e3de; --zero:#8a8983;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121211; --surface:#1a1a19; --surface-2:#232321; --border:#383835;
+  --text:#ffffff; --text-2:#c3c2b7; --text-3:#8a8983;
+  --accent:#3987e5; --accent-soft:rgba(57,135,229,.16);
+  --pos:#4cc36b; --pos-bg:rgba(76,195,107,.12); --pos-bar:#199e70;
+  --neg:#ef6b6b; --neg-bg:rgba(239,107,107,.12); --neg-bar:#e66767;
+  --grid:#2e2e2b; --zero:#6b6a65; --shadow:none;
+}}
+:root[data-theme="dark"]{
+  --bg:#121211; --surface:#1a1a19; --surface-2:#232321; --border:#383835;
+  --text:#ffffff; --text-2:#c3c2b7; --text-3:#8a8983;
+  --accent:#3987e5; --accent-soft:rgba(57,135,229,.16);
+  --pos:#4cc36b; --pos-bg:rgba(76,195,107,.12); --pos-bar:#199e70;
+  --neg:#ef6b6b; --neg-bg:rgba(239,107,107,.12); --neg-bar:#e66767;
+  --grid:#2e2e2b; --zero:#6b6a65; --shadow:none;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:1180px;margin:0 auto;padding:32px 16px 64px}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+h1{font-size:26px;font-weight:700;letter-spacing:-.02em;margin:0}
+.sub{color:var(--text-2);margin:6px 0 24px;max-width:760px}
+h2{font-size:18px;font-weight:600;letter-spacing:-.01em;margin:40px 0 12px}
+h3{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-2);margin:24px 0 10px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:20px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 16px}
+.kpi .l{font-size:12px;color:var(--text-2)}
+.kpi .v{font-size:24px;font-weight:600;letter-spacing:-.02em;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi .n{font-size:12px;color:var(--text-3)}
+.grid2{display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start}
+@media (max-width:860px){.grid2{grid-template-columns:1fr}}
+.chart-wrap{position:relative;height:340px}
+.chart-wrap.sm{height:220px}
+.chart-title{font-weight:600;margin:0 0 12px;font-size:14px}
+.tbl-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:var(--shadow)}
+.tbl-wrap.tall{max-height:560px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:7px 12px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border)}
+th{position:sticky;top:0;background:var(--surface-2);color:var(--text-2);font-weight:600;font-size:12px;z-index:1}
+th.sort{cursor:pointer;user-select:none}
+th.sort:hover{color:var(--text)}
+th.sort::after{content:"";display:inline-block;width:10px;margin-left:4px;color:var(--accent)}
+th.asc::after{content:"▲"} th.desc::after{content:"▼"}
+td.l,th.l{text-align:left}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:var(--accent-soft)}
+td.sym{font-weight:600;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px}
+.pos{color:var(--pos)} .neg{color:var(--neg)} .mut{color:var(--text-3)}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-weight:500}
+.pill.pos{background:var(--pos-bg)} .pill.neg{background:var(--neg-bg)}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));column-gap:32px}
+.stats .row{display:flex;justify-content:space-between;gap:12px;padding:7px 2px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
+.stats .row span:first-child{color:var(--text-2)}
+.stats .row span:last-child{text-align:right;font-weight:500}
+.syms{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0}
+.syms span{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:13px}
+.syms b{font-family:"JetBrains Mono",ui-monospace,monospace;font-weight:600;margin-right:6px}
+.sec-grid{display:grid;grid-template-columns:1fr;gap:16px}
+.legend-note{font-size:12px;color:var(--text-3);margin-top:8px}
+details summary{cursor:pointer;color:var(--text-2);font-size:13px;margin:10px 0}
+
+/* ---------- toolbar & settings ---------- */
+:root{color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark}}
+:root[data-theme="dark"]{color-scheme:dark}
+.toolbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--surface) 90%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+.toolbar-in{max-width:1180px;margin:0 auto;padding:10px 16px;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.brand{font-weight:700;letter-spacing:-.01em;align-self:center;margin-right:8px;display:flex;align-items:center;gap:8px}
+.brand i{width:10px;height:10px;border-radius:3px;background:var(--accent);display:inline-block}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field>label,.field>.lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
+input,select{font:inherit;font-size:13px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0 10px;height:34px;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input[aria-invalid="true"]{border-color:var(--neg)}
+.presets{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;height:34px}
+.presets button{background:var(--surface);border:0;border-right:1px solid var(--border);color:var(--text-2);font:inherit;font-size:12px;font-weight:500;padding:0 10px;cursor:pointer}
+.presets button:last-child{border-right:0}
+.presets button:hover{color:var(--text);background:var(--surface-2)}
+.presets button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.spacer{flex:1}
+.btn{display:inline-flex;align-items:center;gap:8px;height:34px;background:var(--surface);border:1px solid var(--border);color:var(--text-2);border-radius:8px;padding:0 12px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn:hover{color:var(--text);background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.08);background:var(--accent)}
+.btn[aria-expanded="true"]{background:var(--surface-2);color:var(--text)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--text-3)}
+.dot.on{background:var(--pos-bar)}
+.keys{margin-bottom:24px}
+.keys-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.keys-head h2{margin:0;font-size:16px}
+.keys-head p{margin:0;font-size:13px;color:var(--text-3)}
+.keys-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.4fr) 140px;gap:16px;align-items:end}
+@media (max-width:760px){.keys-grid{grid-template-columns:1fr}}
+.pw{display:flex;gap:6px}
+.pw input{flex:1}
+.keys-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px}
+.check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);cursor:pointer}
+.check input{height:auto;width:16px;height:16px;accent-color:var(--accent)}
+.hint{font-size:12px;color:var(--text-3)}
+.status{font-size:13px;margin:0 0 16px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface)}
+.status.err{color:var(--neg);background:var(--neg-bg);border-color:transparent}
+.status.ok{color:var(--pos);background:var(--pos-bg);border-color:transparent}
+.status.warn{color:var(--text);background:rgba(250,178,25,.14);border-color:transparent}
+.btn.primary.stop{background:var(--neg);border-color:var(--neg)}
+.kbd{font:11px/1 "JetBrains Mono",ui-monospace,monospace;border:1px solid currentColor;border-radius:4px;padding:2px 4px;opacity:.75}
+.empty{text-align:center;padding:48px 20px;color:var(--text-2)}
+.empty h2{margin:0 0 6px;color:var(--text)}
+@media (max-width:640px){.toolbar{position:static}.spacer{display:none}.toolbar-in{gap:8px}.brand{width:100%}}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <div class="toolbar-in">
+    <div class="brand"><i></i>Alpaca report</div>
+    <div class="field"><label for="startDate">Start</label><input type="date" id="startDate" required></div>
+    <div class="field"><label for="endDate">End</label><input type="date" id="endDate" required></div>
+    <div class="field"><label for="lookback" title="Also fetch fills from this many days before Start, so positions opened earlier can be matched to their buys">Lookback (days)</label>
+      <input type="number" id="lookback" min="0" max="3650" step="1" value="30" style="width:96px"></div>
+    <div class="field"><span class="lbl">Range</span>
+      <div class="presets" role="group" aria-label="Date range presets">
+        <button type="button" data-days="7" aria-pressed="false">7D</button>
+        <button type="button" data-days="30" aria-pressed="false">30D</button>
+        <button type="button" data-days="90" aria-pressed="false">90D</button>
+        <button type="button" data-days="ytd" aria-pressed="false">YTD</button>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="keysBtn" type="button" aria-expanded="false" aria-controls="keysPanel"><span class="dot" id="keysDot"></span>API keys</button>
+    <button class="btn primary" id="loadBtn" type="button">Load report</button>
+    <button class="btn" id="themeBtn" type="button" aria-label="Toggle light/dark theme">Theme</button>
+  </div>
+</div>
+
+<main>
+  <section class="card keys" id="keysPanel" hidden aria-labelledby="keysTitle">
+    <div class="keys-head">
+      <h2 id="keysTitle">Alpaca API keys</h2>
+      <p>Kept in this tab's memory only and sent only to Alpaca. Refreshing or closing the page clears them.</p>
+    </div>
+    <form id="keysForm" autocomplete="off">
+      <div class="keys-grid">
+        <div class="field"><label for="keyId">API key ID</label>
+          <input id="keyId" name="keyId" type="text" spellcheck="false" autocapitalize="off" placeholder="PK…" autocomplete="off"></div>
+        <div class="field"><label for="secretKey">Secret key</label>
+          <div class="pw"><input id="secretKey" name="secretKey" type="password" spellcheck="false" autocapitalize="off" autocomplete="new-password" data-lpignore="true" data-1p-ignore placeholder="••••••••">
+          <button class="btn" type="button" id="showSecret" aria-pressed="false">Show</button></div></div>
+        <div class="field"><label for="env">Account</label>
+          <select id="env" name="env"><option value="paper">Paper</option><option value="live">Live</option></select></div>
+      </div>
+      <div class="keys-foot">
+        <span class="hint" id="keysHint">Tip: use paper keys, or a live key you can revoke. Alpaca keys can also place orders.</span>
+        <div class="spacer"></div>
+        <button class="btn" type="button" id="clearKeys">Clear</button>
+        <button class="btn primary" type="submit">Save keys</button>
+      </div>
+    </form>
+  </section>
+
+  <div class="status" id="status" role="status" hidden></div>
+
+  <header>
+    <div><h1>Alpaca trade report</h1></div>
+  </header>
+  <p class="sub" id="sub"></p>
+
+  <div class="card empty" id="empty" hidden>
+    <h2 id="emptyTitle">No report loaded</h2>
+    <p id="emptyText">Pick a date range, add your Alpaca API keys, then press <b>Load report</b>.</p>
+  </div>
+
+  <div id="report">
+  <div class="kpis" id="kpis"></div>
+
+  <h2>Cumulative realized P&amp;L</h2>
+  <div class="card">
+    <div class="chart-wrap"><canvas id="cumChart" aria-label="Cumulative realized P&L line chart"></canvas></div>
+    <details><summary>Show daily table</summary>
+      <div class="tbl-wrap"><table id="dailyTbl"></table></div>
+    </details>
+  </div>
+
+  <h2>By week <span class="mut" style="font-weight:400;font-size:14px">(exit week)</span></h2>
+  <div class="card" style="margin-bottom:16px">
+    <p class="chart-title">Net realized P&amp;L per week</p>
+    <div class="chart-wrap sm"><canvas id="wkChart" aria-label="Weekly net P&L bar chart"></canvas></div>
+  </div>
+  <div class="tbl-wrap"><table id="weekTbl"></table></div>
+
+  <div id="sections"></div>
+  </div>
+</main>
+
+<script id="trade-utils">
+// ---------- TradeUtils: FIFO matching and report stats (JS port of analyze.py) ----------
+// Pure functions, no DOM. Defines globalThis.TradeUtils so it can also be run from deno for parity tests.
+(function (root) {
+  const NY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const nyDate = t => NY.format(t);                              // trading day, 'YYYY-MM-DD'
+  const dayNum = d => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 864e5;
+  const dayStr = n => new Date(n * 864e5).toISOString().slice(0, 10);
+  const mondayOf = d => { const n = dayNum(d); return dayStr(n - ((new Date(n * 864e5).getUTCDay() + 6) % 7)); };
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const mean = a => sum(a) / a.length;
+  const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const EPS = 1e-9;   // fractional quantities can leave float dust in lots
+
+  // rows: Alpaca FILL activities ({transaction_time, symbol, side, qty, price, id}, numbers as strings)
+  //       or fills.csv rows ({time, ...}) -> [{t:Date, sym, side, qty, price, id}] sorted by time
+  function normalizeFills(rows) {
+    return rows.map(r => ({ t: new Date(r.transaction_time || r.time), sym: r.symbol, side: r.side === 'buy' ? 'buy' : 'sell',
+      qty: +r.qty, price: +r.price, id: r.id }))
+      .sort((a, b) => a.t - b.t);   // stable sort, same as Python's sorted
+  }
+
+  // Long-only FIFO, one trade per (symbol, exit day). Sells with no known buy go to `unmatched`.
+  function matchFifo(fills) {
+    const lots = new Map(), exits = new Map(), unmatched = [];
+    for (const f of fills) {
+      if (!lots.has(f.sym)) lots.set(f.sym, []);
+      const q0 = lots.get(f.sym);
+      if (f.side === 'buy') { q0.push({ qty: f.qty, price: f.price, t: f.t }); continue; }
+      const day = nyDate(f.t), key = f.sym + '|' + day;
+      if (!exits.has(key)) exits.set(key, { sym: f.sym, exit: f.t, exitDay: day, qty: 0, proceeds: 0, cost: 0, entry: null });
+      const e = exits.get(key);
+      let q = f.qty, matched = 0;
+      while (q > EPS && q0.length) {
+        const lot = q0[0], take = Math.min(q, lot.qty);
+        e.cost += take * lot.price; if (!e.entry || lot.t < e.entry) e.entry = lot.t;
+        lot.qty -= take; q -= take; matched += take;
+        if (lot.qty <= EPS) q0.shift();
+      }
+      if (q > EPS) unmatched.push({ sym: f.sym, t: f.t, qty: q });
+      e.qty += matched; e.proceeds += matched * f.price;          // only the matched part counts
+    }
+    const trades = [...exits.values()].filter(e => e.qty > EPS).sort((a, b) => a.exit - b.exit);
+    for (const e of trades) {
+      e.pnl = e.proceeds - e.cost; e.pct = e.pnl / e.cost * 100;
+      e.entryDay = nyDate(e.entry); e.days = dayNum(e.exitDay) - dayNum(e.entryDay);
+    }
+    const open = [...lots].map(([sym, l]) => [sym, sum(l.map(x => x.qty))]).filter(([, q]) => q > EPS);
+    return { trades, unmatched, open };
+  }
+
+  // Python-compatible formatting: fmt(v) ~ f"{v:,.2f}", fmt(v,2,true) ~ f"{v:+,.2f}"
+  const fmt = (v, d = 2, sign = false) =>
+    (v < 0 ? '-' : sign ? '+' : '') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+  function split(T) {
+    const W = T.filter(e => e.pnl > 0), L = T.filter(e => e.pnl <= 0);   // break-even counts as a loser, as in Python
+    const gw = sum(W.map(e => e.pnl)), gl = -sum(L.map(e => e.pnl));
+    return { W, L, gw, gl, net: gw - gl };
+  }
+
+  // [[label, formatted value], ...] in the same order and format as analyze.py's report()
+  function tradeStats(T) {
+    if (!T.length) return [['Closed trades', 0]];
+    const { W, L, gw, gl, net } = split(T), WL = W.length && L.length;
+    const best = T.reduce((m, e) => e.pnl > m.pnl ? e : m), worst = T.reduce((m, e) => e.pnl < m.pnl ? e : m);
+    let cum = 0, peak = 0, mdd = 0, mw = 0, ml = 0, cw = 0, cl = 0;
+    for (const e of T) {
+      cum += e.pnl; peak = Math.max(peak, cum); mdd = Math.max(mdd, peak - cum);   // drawdown on cumulative realized P&L
+      if (e.pnl > 0) { cw++; cl = 0; } else { cl++; cw = 0; }
+      mw = Math.max(mw, cw); ml = Math.max(ml, cl);
+    }
+    const pc = a => a.map(e => e.pct), dy = a => a.map(e => e.days), cap = sum(T.map(e => e.cost));
+    const m1 = a => a.length ? mean(a).toFixed(1) : '-';
+    return [
+      ['Closed trades', T.length], ['Winners / Losers', `${W.length} / ${L.length}`],
+      ['Win rate', `${(W.length / T.length * 100).toFixed(1)}%`],
+      ['Net realized P&L', `$${fmt(net, 2, true)}`], ['Gross profit / Gross loss', `$${fmt(gw)} / -$${fmt(gl)}`],
+      ['Profit factor', gl ? (gw / gl).toFixed(2) : '∞'],
+      ['Avg win / Avg loss', WL ? `$${fmt(gw / W.length)} / -$${fmt(gl / L.length)}` : '-'],
+      ['Payoff ratio (avg win/avg loss)', WL ? ((gw / W.length) / (gl / L.length)).toFixed(2) : '-'],
+      ['Expectancy per trade', `$${fmt(net / T.length, 2, true)}`],
+      ['Avg return per trade', `${fmt(mean(pc(T)), 2, true)}%`], ['Median return per trade', `${fmt(median(pc(T)), 2, true)}%`],
+      ['Avg win % / Avg loss %', WL ? `${fmt(mean(pc(W)), 2, true)}% / ${fmt(mean(pc(L)), 2, true)}%` : '-'],
+      ['Largest win', `${best.sym} $${fmt(best.pnl, 2, true)} (${fmt(best.pct, 2, true)}%)`],
+      ['Largest loss', `${worst.sym} $${fmt(worst.pnl, 2, true)} (${fmt(worst.pct, 2, true)}%)`],
+      ['Avg holding (days)', `${mean(dy(T)).toFixed(1)} (win ${m1(dy(W))} / loss ${m1(dy(L))})`],
+      ['Avg position size', `$${fmt(cap / T.length, 0)}`], ['Total capital turned over', `$${fmt(cap, 0)}`],
+      ['Return on capital deployed', `${fmt(net / cap * 100, 2, true)}%`],
+      ['Max realized drawdown (trade seq.)', `-$${fmt(mdd)}`], ['Longest win / loss streak', `${mw} / ${ml}`]];
+  }
+
+  // one row per Monday-start exit week
+  function weeklyBreakdown(T) {
+    const g = new Map();
+    for (const e of T) { const k = mondayOf(e.exitDay); if (!g.has(k)) g.set(k, []); g.get(k).push(e); }
+    let cum = 0;
+    return [...g.keys()].sort().map(k => {
+      const t = g.get(k), { W, L, gw, gl, net } = split(t); cum += net;
+      const b = t.reduce((m, e) => e.pnl > m.pnl ? e : m), w = t.reduce((m, e) => e.pnl < m.pnl ? e : m);
+      return { week: k, n: t.length, w: W.length, l: L.length, net, cum, gw, gl, pf: gl ? gw / gl : null,
+        aw: W.length ? gw / W.length : null, al: L.length ? gl / L.length : null, exp: net / t.length,
+        ret: mean(t.map(e => e.pct)), hold: mean(t.map(e => e.days)), cap: sum(t.map(e => e.cost)),
+        best: [b.sym, b.pnl], worst: [w.sym, w.pnl] };
+    });
+  }
+
+  function dailyCumulative(T) {
+    const d = new Map(); for (const e of T) d.set(e.exitDay, (d.get(e.exitDay) || 0) + e.pnl);
+    let c = 0; return [...d.keys()].sort().map(k => { c += d.get(k); return { d: k, day: d.get(k), cum: c }; });
+  }
+
+  function symbolTotals(T, n = 5) {
+    const s = new Map(); for (const e of T) s.set(e.sym, (s.get(e.sym) || 0) + e.pnl);
+    const ss = [...s].sort((a, b) => a[1] - b[1]);
+    return { best: [...ss].reverse().slice(0, n), worst: ss.slice(0, n) };
+  }
+
+  const tj = T => T.map(e => ({ sym: e.sym, entry: e.entryDay.slice(5), exit: e.exitDay.slice(5), days: e.days, qty: e.qty,
+    avgin: e.cost / e.qty, avgout: e.proceeds / e.qty, cost: e.cost, pnl: e.pnl, pct: e.pct }));
+
+  // Full fill history in -> report DATA for exits in [start, end] (same shape analyze.py bakes into the page).
+  // Pass the whole history, not just the range, so sells match their original buys.
+  function buildReport(rawFills, { start, end, asof }) {
+    const { trades, unmatched, open } = matchFifo(normalizeFills(rawFills));
+    const inR = (a, b) => trades.filter(e => e.exitDay >= a && e.exitDay <= b);
+    const lw = mondayOf(end) < start ? start : mondayOf(end);
+    const T = inR(start, end), lastw = inR(lw, end), { best, worst } = symbolTotals(T);
+    return { asof: asof || nyDate(new Date()), start, end, lw, unmatched, open,
+      daily: dailyCumulative(T), weeks: weeklyBreakdown(T),
+      sections: [{ title: `Selected range (exits ${start} → ${end})`, trades: tj(T), stats: tradeStats(T), best, worst },
+                 { title: `Last week (exits ${lw} → ${end})`, trades: tj(lastw), stats: tradeStats(lastw) }] };
+  }
+
+  root.TradeUtils = { nyDate, mondayOf, median, normalizeFills, matchFifo, tradeStats, weeklyBreakdown,
+    dailyCumulative, symbolTotals, buildReport };
+})(globalThis);
+</script>
+
+<script id="alpaca-api">
+// ---------- Alpaca REST: fetch FILL activities with plain fetch (no SDK) ----------
+(function (root) {
+  const BASE = { paper: 'https://paper-api.alpaca.markets', live: 'https://api.alpaca.markets' };
+  const DEBUG_SINGLE_PAGE = false;  // debugging: one request only (latest 100 fills in the window), no page_token paging
+
+  class AlpacaError extends Error {}
+
+  // GET with auth headers; retries HTTP 429 (rate limit: 200 req/min) with backoff.
+  async function alpacaGet(url, { keyId, secretKey }, signal) {
+    for (let attempt = 0; ; attempt++) {
+      let res;
+      try {
+        res = await fetch(url, { headers: { 'APCA-API-KEY-ID': keyId, 'APCA-API-SECRET-KEY': secretKey }, signal });
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+        // fetch() rejects without a status for network failures and CORS blocks alike
+        throw new AlpacaError(`Could not reach ${new URL(url).host}. Check your connection; if the browser console shows a CORS error, Alpaca is blocking calls from this page and a local proxy is needed.`);
+      }
+      if (res.status === 429 && attempt < 4) {
+        const wait = (+res.headers.get('Retry-After') || 2 ** attempt) * 1000;
+        await new Promise((r, j) => { const t = setTimeout(r, wait);
+          signal?.addEventListener('abort', () => { clearTimeout(t); j(signal.reason); }, { once: true }); });
+        continue;
+      }
+      if (res.status === 401 || res.status === 403)
+        throw new AlpacaError(`Alpaca rejected the API keys (HTTP ${res.status}). Check the key ID, secret and the Paper/Live setting.`);
+      if (!res.ok) {
+        let msg = ''; try { msg = (await res.json()).message || ''; } catch (e) {}
+        throw new AlpacaError(`Alpaca returned HTTP ${res.status}${msg ? ': ' + msg : ''}.`);
+      }
+      return res.json();
+    }
+  }
+
+  // FILL activities in the window (after, until) — ISO timestamps — newest first, 100 per page;
+  // the next page continues from the last activity id. onPage(page) is called after every page, so
+  // callers keep what arrived even if the fetch is stopped (signal aborts -> AbortError).
+  // Resolves true when the whole window was fetched, false if DEBUG_SINGLE_PAGE cut it short.
+  let logged = 0;
+  async function fetchFills(keys, { after, until, onPage, signal } = {}) {
+    let token;
+    for (;;) {
+      const url = new URL(BASE[keys.env] + '/v2/account/activities/FILL');
+      url.searchParams.set('direction', 'desc');
+      url.searchParams.set('page_size', '100');
+      if (after) url.searchParams.set('after', after);
+      if (until) url.searchParams.set('until', until);
+      if (token) url.searchParams.set('page_token', token);
+      const page = await alpacaGet(url, keys, signal);
+      for (const a of page)
+        console.log(`[alpaca] fill #${++logged} ${a.transaction_time} ${a.side} ${a.qty} ${a.symbol} @ ${a.price}`, a);
+      onPage?.(page);
+      if (page.length < 100) return true;
+      if (DEBUG_SINGLE_PAGE) { console.info('[alpaca] DEBUG_SINGLE_PAGE: stopped after 1 request'); return false; }
+      token = page[page.length - 1].id;
+    }
+  }
+
+  root.AlpacaApi = { fetchFills, AlpacaError };
+})(globalThis);
+</script>
+
+<script>
+const DATA = /*__DATA__*/null;   // filled in by analyze.py; null when the page is used standalone
+let REPORT = null;                // the report currently on screen
+
+// ---------- formatting ----------
+const nf2 = new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const nf0 = new Intl.NumberFormat('en-US',{maximumFractionDigits:0});
+const sgn = v => v>0?'+':v<0?'−':'';
+const usd = (v,d=2) => `${sgn(v)}$${(d?nf2:nf0).format(Math.abs(v))}`;
+const pct = v => `${sgn(v)}${nf2.format(Math.abs(v))}%`;
+const cls = v => v>0?'pos':v<0?'neg':'mut';
+const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---------- sortable table ----------
+// cols: {key,label,fmt(row)->html,val(row)->sortable,left,cls(row)}
+function table(el, cols, rows, {sortable=true}={}){
+  let sortKey=null, dir=1;
+  const render=()=>{
+    let r=[...rows];
+    if(sortKey!==null){const c=cols[sortKey];r.sort((a,b)=>{const x=c.val(a),y=c.val(b);return (x<y?-1:x>y?1:0)*dir});}
+    el.innerHTML=`<thead><tr>${cols.map((c,i)=>`<th data-i="${i}" class="${c.left?'l ':''}${sortable&&c.val?'sort':''} ${sortKey===i?(dir>0?'asc':'desc'):''}">${c.label}</th>`).join('')}</tr></thead>`+
+      `<tbody>${r.map(row=>`<tr>${cols.map(c=>`<td class="${c.left?'l ':''}${c.cls?c.cls(row):''}">${c.fmt(row)}</td>`).join('')}</tr>`).join('')}</tbody>`;
+    if(sortable) el.querySelectorAll('th.sort').forEach(th=>th.onclick=()=>{const i=+th.dataset.i;dir=sortKey===i?-dir:(cols[i].left?1:-1);sortKey=i;render();});
+  };
+  render();
+}
+
+// ---------- render a report ----------
+function renderReport(DATA){
+if(!DATA.sections[0].trades.length)
+  return showEmpty('No closed trades in this range', `No positions were closed between ${DATA.start} and ${DATA.end}. Try a wider date range.`);
+REPORT = DATA;
+document.getElementById('report').hidden = false;
+document.getElementById('empty').hidden = true;
+document.getElementById('sections').innerHTML = '';
+
+// header & KPIs
+const S5 = DATA.sections[0], stat = Object.fromEntries(S5.stats);
+const net5 = S5.trades.reduce((a,t)=>a+t.pnl,0);
+document.getElementById('sub').innerHTML =
+  `As of <b>${DATA.asof}</b> · exits ${DATA.start} → ${DATA.end}. Round trips matched FIFO (same as Alpaca's cost basis), one row per symbol per exit day. Realized P&amp;L only; small regulatory fees (SEC/TAF) not included.`;
+const peak = DATA.daily.reduce((m,d)=>d.cum>m.cum?d:m,{cum:0,d:DATA.start});
+const kpis = [
+  ['Net realized P&L', `<span class="${cls(net5)}">${usd(net5)}</span>`, `${S5.trades.length} closed trades`],
+  ['Win rate', stat['Win rate'], stat['Winners / Losers']+' W / L'],
+  ['Profit factor', stat['Profit factor'], 'Payoff ratio '+stat['Payoff ratio (avg win/avg loss)']],
+  ['Expectancy / trade', `<span class="${cls(net5)}">${stat['Expectancy per trade'].replace('$+','+$').replace('$-','−$')}</span>`, 'Avg win / loss '+stat['Avg win / Avg loss']],
+  ['Peak cumulative', `<span class="${cls(peak.cum)}">${usd(peak.cum,0)}</span>`, peak.cum>0?'on '+peak.d:'never above $0 in range'],
+  ['Max drawdown', `<span class="neg">${stat['Max realized drawdown (trade seq.)'].replace('-$','−$')}</span>`, 'trade sequence, realized'],
+];
+document.getElementById('kpis').innerHTML = kpis.map(([l,v,n])=>`<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="n">${esc(n)}</div></div>`).join('');
+
+// ---------- daily table ----------
+table(document.getElementById('dailyTbl'),[
+  {label:'Date',left:true,fmt:r=>r.d,val:r=>r.d},
+  {label:'Day P&L',fmt:r=>usd(r.day),val:r=>r.day,cls:r=>cls(r.day)},
+  {label:'Cumulative',fmt:r=>usd(r.cum),val:r=>r.cum,cls:r=>cls(r.cum)},
+],DATA.daily);
+
+// ---------- weekly table ----------
+table(document.getElementById('weekTbl'),[
+  {label:'Week (Mon)',left:true,fmt:r=>r.week,val:r=>r.week},
+  {label:'Trades',fmt:r=>r.n,val:r=>r.n},
+  {label:'W / L',fmt:r=>`${r.w} / ${r.l}`,val:r=>r.w/r.n},
+  {label:'Win rate',fmt:r=>`${Math.round(r.w/r.n*100)}%`,val:r=>r.w/r.n},
+  {label:'Net P&L',fmt:r=>`<span class="pill ${cls(r.net)}">${usd(r.net)}</span>`,val:r=>r.net},
+  {label:'Cum. P&L',fmt:r=>usd(r.cum),val:r=>r.cum,cls:r=>cls(r.cum)},
+  {label:'Gross profit / loss',fmt:r=>`<span class="pos">${usd(r.gw,0)}</span> / <span class="neg">${usd(-r.gl,0)}</span>`,val:r=>r.gw},
+  {label:'Profit factor',fmt:r=>r.pf==null?'∞':nf2.format(r.pf),val:r=>r.pf??1e9,cls:r=>r.pf>=1?'pos':'neg'},
+  {label:'Avg win / Avg loss',fmt:r=>`${r.aw==null?'–':usd(r.aw)} / ${r.al==null?'–':usd(-r.al)}`,val:r=>r.aw??0},
+  {label:'Expectancy',fmt:r=>usd(r.exp),val:r=>r.exp,cls:r=>cls(r.exp)},
+  {label:'Avg ret',fmt:r=>pct(r.ret),val:r=>r.ret,cls:r=>cls(r.ret)},
+  {label:'Avg hold (d)',fmt:r=>r.hold.toFixed(1),val:r=>r.hold},
+  {label:'Capital turned',fmt:r=>'$'+nf0.format(r.cap),val:r=>r.cap},
+  {label:'Best',left:true,fmt:r=>`<b>${esc(r.best[0])}</b> <span class="pos">${usd(r.best[1],0)}</span>`,val:r=>r.best[1]},
+  {label:'Worst',left:true,fmt:r=>`<b>${esc(r.worst[0])}</b> <span class="neg">${usd(r.worst[1],0)}</span>`,val:r=>r.worst[1]},
+],DATA.weeks);
+
+// ---------- trade sections ----------
+const tradeCols = [
+  {label:'#',fmt:r=>r.i,val:r=>r.i,cls:()=>'mut'},
+  {label:'Symbol',left:true,fmt:r=>esc(r.sym),val:r=>r.sym,cls:()=>'sym'},
+  {label:'Entry',fmt:r=>r.entry,val:r=>r.entry},
+  {label:'Exit',fmt:r=>r.exit,val:r=>r.exit},
+  {label:'Days',fmt:r=>r.days,val:r=>r.days},
+  {label:'Qty',fmt:r=>r.qty,val:r=>r.qty},
+  {label:'Avg In',fmt:r=>nf2.format(r.avgin),val:r=>r.avgin},
+  {label:'Avg Out',fmt:r=>nf2.format(r.avgout),val:r=>r.avgout},
+  {label:'Cost',fmt:r=>nf0.format(r.cost),val:r=>r.cost},
+  {label:'P&L $',fmt:r=>usd(r.pnl),val:r=>r.pnl,cls:r=>cls(r.pnl)},
+  {label:'P&L %',fmt:r=>`<span class="pill ${cls(r.pct)}">${pct(r.pct)}</span>`,val:r=>r.pct},
+];
+// stats whose value carries a sign worth colouring
+const signed = {'Net realized P&L':1,'Expectancy per trade':1,'Avg return per trade':1,'Median return per trade':1,'Return on capital deployed':1};
+const statHtml = ([k,v]) => {
+  let c='';
+  v=String(v);
+  if(signed[k]) c = /[-]/.test(v.replace(/^\$/,'').slice(0,2))?'neg':'pos';
+  if(k==='Largest win') c='pos';
+  if(k==='Largest loss'||k.startsWith('Max realized drawdown')) c='neg';
+  v=v.replace(/\$-/g,'−$').replace(/\$\+/g,'+$').replace(/ -\$/g,' −$').replace(/^-\$/,'−$');
+  return `<div class="row"><span>${esc(k)}</span><span class="${c}">${esc(v)}</span></div>`;
+};
+const secEl = document.getElementById('sections');
+DATA.sections.forEach((s,si)=>{
+  const id='tr'+si;
+  secEl.insertAdjacentHTML('beforeend',`
+    <h2>${esc(s.title)}</h2>
+    ${s.best?`<h3>Best 5 symbols</h3><div class="syms">${s.best.map(([k,v])=>`<span><b>${esc(k)}</b><span class="pos">${usd(v)}</span></span>`).join('')}</div>
+              <h3>Worst 5 symbols</h3><div class="syms">${s.worst.map(([k,v])=>`<span><b>${esc(k)}</b><span class="neg">${usd(v)}</span></span>`).join('')}</div>`:''}
+    <div class="sec-grid" style="margin-top:16px">
+      <div class="tbl-wrap tall"><table id="${id}"></table></div>
+      <div class="card"><p class="chart-title">Stats</p><div class="stats">${s.stats.map(statHtml).join('')}</div></div>
+    </div>`);
+  table(document.getElementById(id), tradeCols, s.trades.map((t,i)=>({...t,i:i+1})));
+});
+
+drawCharts();
+}
+
+function showEmpty(title='No report loaded', html='Pick a date range, add your Alpaca API keys, then press <b>Load report</b>.'){
+  REPORT = null; drawCharts();
+  document.getElementById('report').hidden = true;
+  document.getElementById('empty').hidden = false;
+  document.getElementById('emptyTitle').textContent = title;
+  document.getElementById('emptyText').innerHTML = html;
+  document.getElementById('sub').textContent = '';
+}
+
+// ---------- charts ----------
+let charts=[];
+function drawCharts(){
+  charts.forEach(c=>c.destroy()); charts=[];
+  const DATA = REPORT; if(!DATA) return;
+  Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+  Chart.defaults.color = css('--text-2');
+  const grid=css('--grid'), zero=css('--zero'), accent=css('--accent'), surface=css('--surface');
+  const tooltip = {backgroundColor:css('--surface-2'),titleColor:css('--text'),bodyColor:css('--text'),borderColor:css('--border'),borderWidth:1,padding:10,displayColors:false};
+
+  // cumulative line: start at 0 on the first Monday, one point per exit day
+  const pts=[{d:DATA.start,day:0,cum:0},...DATA.daily];
+  const wkOf=d=>{const t=new Date(d+'T00:00:00Z');t.setUTCDate(t.getUTCDate()-(t.getUTCDay()+6)%7);return t.toISOString().slice(0,10);};
+  const weekStart=new Set(pts.map((p,i)=>i).filter(i=>i===1||(i>1&&wkOf(pts[i].d)!==wkOf(pts[i-1].d))));
+  const ctx=document.getElementById('cumChart');
+  const g=ctx.getContext('2d').createLinearGradient(0,0,0,340);
+  g.addColorStop(0,accent+'33'); g.addColorStop(1,accent+'00');
+  charts.push(new Chart(ctx,{type:'line',
+    data:{labels:pts.map(p=>p.d.slice(5)),datasets:[{data:pts.map(p=>p.cum),borderColor:accent,borderWidth:2,tension:.15,
+      fill:{target:'origin',above:g,below:css('--neg')+'22'},
+      pointRadius:3,pointHoverRadius:6,pointBackgroundColor:accent,pointBorderColor:surface,pointBorderWidth:1.5}]},
+    options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{...tooltip,callbacks:{
+        title:i=>(i[0].dataIndex?'':'Start ')+pts[i[0].dataIndex].d,
+        label:i=>{const p=pts[i.dataIndex];return [`Cumulative  ${usd(p.cum)}`,`Day         ${usd(p.day)}`];}}}},
+      scales:{
+        x:{grid:{color:c=>weekStart.has(c.index)?grid:'transparent',drawTicks:false},border:{display:false},
+           ticks:{maxRotation:0,autoSkip:false,padding:8,callback:(v,i)=>i&&(weekStart.has(i)||i===pts.length-1)?pts[i].d.slice(5):''}},
+        y:{grid:{color:c=>c.tick.value===0?zero:grid,lineWidth:c=>c.tick.value===0?1.5:1},border:{display:false},
+           ticks:{callback:v=>usd(v,0),padding:8}}}}}));
+
+  // weekly bars
+  const W=DATA.weeks;
+  charts.push(new Chart(document.getElementById('wkChart'),{type:'bar',
+    data:{labels:W.map(w=>'Wk '+w.week.slice(5)),datasets:[{data:W.map(w=>w.net),
+      backgroundColor:W.map(w=>w.net>=0?css('--pos-bar'):css('--neg-bar')),borderRadius:4,borderSkipped:'start',maxBarThickness:56}]},
+    options:{maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{...tooltip,callbacks:{title:i=>'Week of '+W[i[0].dataIndex].week,
+        label:i=>{const w=W[i.dataIndex];return [`Net  ${usd(w.net)}`,`Cum  ${usd(w.cum)}`,`${w.n} trades, ${Math.round(w.w/w.n*100)}% win`];}}}},
+      scales:{x:{grid:{display:false},border:{display:false}},
+              y:{grid:{color:c=>c.tick.value===0?zero:grid},border:{display:false},ticks:{callback:v=>usd(v,0)}}}}}));
+}
+// ---------- theme toggle ----------
+const root=document.documentElement;
+try{const t=localStorage.getItem('theme');if(t)root.dataset.theme=t;}catch(e){}
+document.getElementById('themeBtn').onclick=()=>{
+  const dark=root.dataset.theme?root.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme=dark?'light':'dark';
+  try{localStorage.setItem('theme',root.dataset.theme);}catch(e){}
+  drawCharts();
+};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',drawCharts);
+
+// ---------- settings: date range ----------
+const $ = id => document.getElementById(id);
+const isoDay = d => new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10); // local date, YYYY-MM-DD
+const daysAgo = n => { const d=new Date(); d.setDate(d.getDate()-n); return d; };
+const startEl=$('startDate'), endEl=$('endDate');
+
+function setRange(start,end){
+  startEl.value=start; endEl.value=end;
+  syncRange();
+}
+function syncRange(){
+  const today=isoDay(new Date());
+  endEl.max=today; startEl.max=endEl.value||today; endEl.min=startEl.value||'';
+  const bad=!startEl.value||!endEl.value||startEl.value>endEl.value;
+  startEl.setAttribute('aria-invalid',bad); endEl.setAttribute('aria-invalid',bad);
+  // highlight the preset that matches the current range, if any
+  document.querySelectorAll('.presets button').forEach(b=>b.setAttribute('aria-pressed',
+    endEl.value===today && startEl.value===presetStart(b.dataset.days)));
+  return !bad;
+}
+function presetStart(p){
+  return p==='ytd' ? `${new Date().getFullYear()}-01-01` : isoDay(daysAgo(+p));
+}
+document.querySelectorAll('.presets button').forEach(b=>b.onclick=()=>setRange(presetStart(b.dataset.days),isoDay(new Date())));
+startEl.addEventListener('change',syncRange); endEl.addEventListener('change',syncRange);
+setRange(isoDay(daysAgo(30)),isoDay(new Date()));   // default: last 30 days
+
+// ---------- settings: API keys ----------
+// Keys live only in this variable: never in localStorage/sessionStorage/cookies, so a refresh or closing
+// the tab forgets them. The secret is also removed from its input field once saved.
+let keys = null;   // {keyId, secretKey, env} or null
+// remove keys saved by earlier versions of this page (they used localStorage/sessionStorage)
+for(const s of ['localStorage','sessionStorage']) try{ window[s].removeItem('alpacaKeys'); }catch(e){}
+
+function fillKeysForm(){
+  $('keyId').value=keys?.keyId||''; $('secretKey').value='';
+  $('secretKey').placeholder=keys?'saved (type to replace)':'••••••••';
+  $('env').value=keys?.env||'paper';
+  updateKeysDot();
+}
+function updateKeysDot(){
+  $('keysDot').classList.toggle('on',!!keys);
+  $('keysBtn').title = keys ? `Keys set for this tab (${keys.env}, ${keys.keyId.slice(0,4)}…)` : 'No API keys set';
+}
+function toggleKeys(open=$('keysPanel').hidden){
+  $('keysPanel').hidden=!open; $('keysBtn').setAttribute('aria-expanded',open);
+  if(open) $(keys?'secretKey':'keyId').focus();
+}
+$('keysBtn').onclick=()=>toggleKeys();
+$('showSecret').onclick=e=>{
+  const show=$('secretKey').type==='password';
+  $('secretKey').type=show?'text':'password';
+  e.currentTarget.textContent=show?'Hide':'Show'; e.currentTarget.setAttribute('aria-pressed',show);
+};
+$('keysForm').onsubmit=e=>{
+  e.preventDefault();
+  const keyId=$('keyId').value.trim();
+  // an empty secret field keeps the saved secret when only the key ID / account is unchanged
+  const secretKey=$('secretKey').value.trim()||(keys&&keys.keyId===keyId?keys.secretKey:'');
+  $('keyId').setAttribute('aria-invalid',!keyId); $('secretKey').setAttribute('aria-invalid',!secretKey);
+  if(!keyId||!secretKey) return notify('Enter both the API key ID and the secret key.','err');
+  keys={keyId,secretKey,env:$('env').value};
+  fillKeysForm(); toggleKeys(false); cache=null;
+  notify(`API keys set for this tab (${keys.env}). They are not stored; refreshing the page clears them.`,'ok');
+};
+$('clearKeys').onclick=()=>{ keys=null; cache=null; fillKeysForm(); notify('API keys cleared.'); };
+fillKeysForm();
+
+// ---------- status line ----------
+let statusTimer;
+function notify(msg,kind=''){
+  const el=$('status'); clearTimeout(statusTimer);
+  el.hidden=!msg; el.textContent=msg||''; el.className='status '+kind;
+  if(kind==='ok') statusTimer=setTimeout(()=>el.hidden=true,4000);
+}
+
+// ---------- load ----------
+// Fetch window = [Start − lookback, End], newest first. Fills are cached per key set together with the
+// time spans already fetched completely, so a later load only fetches the missing gaps (e.g. after a Stop,
+// a wider range, or new fills since the last load). The report uses the cached fills inside the window.
+let cache=null;        // {keyId, env, byId: Map(id -> activity), spans: [[fromMs, toMs], ...] fully fetched}
+let loading=null;      // AbortController of the fetch in progress; while set, the Load button is a Stop button
+const DAY=864e5;
+const dayMs=(d,h)=>Date.parse(`${d}T${String(h).padStart(2,'0')}:00:00Z`);
+const lookbackEl=$('lookback');
+const lookbackDays=()=>Math.max(0,Math.min(3650,Math.floor(+lookbackEl.value)||0));
+
+// window in ms: from Start−lookback 04:00Z (midnight New York) to the day after End 06:00Z (covers after-hours);
+// the report itself is filtered on New York exit dates.
+function fetchWindow(){
+  return [dayMs(startEl.value,4)-lookbackDays()*DAY, dayMs(endEl.value,6)+DAY];
+}
+function addSpan(a,b){
+  if(b<=a) return;
+  const all=[...cache.spans,[a,b]].sort((x,y)=>x[0]-y[0]), out=[];
+  for(const sp of all){ const l=out.at(-1); if(l&&sp[0]<=l[1]) l[1]=Math.max(l[1],sp[1]); else out.push([...sp]); }
+  cache.spans=out;
+}
+// parts of [a,b] not fetched yet, newest first
+function gaps(a,b){
+  const out=[]; let hi=b;
+  for(const [x,y] of [...cache.spans].sort((p,q)=>q[1]-p[1])){
+    if(y<a||x>hi) continue;
+    if(y<hi) out.push([Math.max(x,a),hi]);
+    hi=Math.min(hi,x);
+    if(hi<=a) break;
+  }
+  if(hi>a) out.push([a,hi]);
+  return out.filter(([x,y])=>y>x);
+}
+
+function stopLoading(){ loading?.abort(); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&loading){ e.preventDefault(); stopLoading(); } });
+$('loadBtn').onclick=async()=>{
+  if(loading) return stopLoading();
+  if(!syncRange()) return notify('Start date must be on or before the end date.','err');
+  if(!keys){ toggleKeys(true); return notify('Add your Alpaca API keys first.','err'); }
+  loading=new AbortController();
+  const btn=$('loadBtn'); btn.classList.add('stop'); btn.innerHTML='Stop <span class="kbd">Esc</span>';
+  try{
+    if(!cache || cache.keyId!==keys.keyId || cache.env!==keys.env) cache={keyId:keys.keyId,env:keys.env,byId:new Map(),spans:[]};
+    const [A,U]=fetchWindow(), iso=ms=>new Date(ms).toISOString();
+    let fresh=0, oldest=null, stopped=false;
+    const progress=()=>notify(`Fetching fills from Alpaca (${keys.env}), newest first… ${fresh} new`+
+      (oldest?`, back to ${TradeUtils.nyDate(new Date(oldest))}`:'')+' · press Stop or Esc to cancel');
+    progress();
+    try{
+      for(const [a,b] of gaps(A,U)){
+        const done=await AlpacaApi.fetchFills(keys,{after:iso(a),until:iso(b),signal:loading.signal,onPage:page=>{
+          for(const f of page) if(!cache.byId.has(f.id)){ cache.byId.set(f.id,f); fresh++; }
+          if(page.length){
+            oldest=Date.parse(page.at(-1).transaction_time);
+            // everything newer than the oldest fill on this page is complete; keep a 1s margin because
+            // several partial fills can share a second and the rest of them may be on the next page
+            addSpan(oldest+1000,b);
+          }
+          progress();
+        }});
+        if(done) addSpan(a,b);
+      }
+    }catch(err){
+      if(err.name!=='AbortError') throw err;
+      stopped=true;
+    }
+    const inWindow=[...cache.byId.values()].filter(f=>{const t=Date.parse(f.transaction_time);return t>=A&&t<=U;});
+    if(!inWindow.length){ showEmpty(stopped?'Stopped':'No fills in this range', stopped?'Stopped before any fills were loaded.':`Alpaca returned no fills between ${iso(A).slice(0,10)} and ${endEl.value}.`); return notify(''); }
+    const R=TradeUtils.buildReport(inWindow,{start:startEl.value,end:endEl.value});
+    renderReport(R);
+    const n=R.sections[0].trades.length, lb=lookbackDays();
+    if(stopped) return notify(`Stopped: only fills back to ${oldest?TradeUtils.nyDate(new Date(oldest)):startEl.value} were loaded, so the report is incomplete. `+
+      `Press Load report to fetch the rest.`,'warn');
+    // sells whose buy is older than the fetched window (or shorts) are left out of P&L
+    const um=R.unmatched.filter(u=>{const d=TradeUtils.nyDate(u.t);return d>=R.start&&d<=R.end;});
+    if(um.length) notify(`${um.length} sell fill(s) had no buy in the fetched window and were left out of P&L: `+
+      [...new Set(um.map(u=>u.sym))].join(', ')+`. Increase Lookback (now ${lb} days) to include older buys. Short sales are not supported.`,'warn');
+    else notify(`Loaded ${inWindow.length} fills (${fresh} new) from ${iso(A).slice(0,10)} (${lb}-day lookback) · ${n} closed trade${n===1?'':'s'} in range.`,'ok');
+  }catch(err){
+    console.error(err);
+    notify(err instanceof AlpacaApi.AlpacaError?err.message:`Something went wrong: ${err.message}`,'err');
+  }finally{
+    loading=null; btn.classList.remove('stop'); btn.textContent='Load report';
+  }
+};
+
+// ---------- initial render ----------
+// a baked-in report (from analyze.py) sets the toolbar to its own range; standalone keeps the 30-day default
+if(DATA){ setRange(DATA.start,DATA.end); renderReport(DATA); } else showEmpty();
+
+// ---------- settings from the URL ----------
+// index.html#start=YYYY-MM-DD&end=YYYY-MM-DD&lookback=30        (dates work everywhere)
+// index.html#key=PK…&secret=…&env=paper                         (keys: local use only — file:// or localhost)
+// On a hosted page (e.g. GitHub Pages) keys in the URL are ignored: a ?query reaches the server's logs and any
+// URL can end up in history, bookmarks and browser sync. Keys must be typed into the API keys panel there.
+(function fromUrl(){
+  const q=new URLSearchParams(location.search), h=new URLSearchParams(location.hash.slice(1));
+  const get=k=>(h.get(k)??q.get(k))?.trim()||null;
+  const isDay=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'');
+  const keyId=get('key'), secretKey=get('secret'), start=get('start'), end=get('end'), lookback=get('lookback');
+  if(!keyId&&!secretKey&&!start&&!end&&!lookback) return;
+  try{ history.replaceState(null,'',location.pathname); }catch(e){}   // wipe the URL (keys included) right away
+  if(/^\d+$/.test(lookback||'')) lookbackEl.value=lookback;
+  if(isDay(start)||isDay(end)) setRange(isDay(start)?start:startEl.value, isDay(end)?end:endEl.value);
+  if(!keyId&&!secretKey) return;
+  const local=location.protocol==='file:'||['localhost','127.0.0.1','[::1]'].includes(location.hostname);
+  if(!local) return notify('API keys in the URL are ignored on a hosted page. Enter them under API keys instead.','warn');
+  if(keyId&&secretKey){
+    keys={keyId,secretKey,env:get('env')==='live'?'live':'paper'};
+    cache=null; fillKeysForm();
+    $('loadBtn').click();
+  }
+})();
+</script>
+</body>
+</html>
