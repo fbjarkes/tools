@@ -161,12 +161,12 @@ input[aria-invalid="true"]{border-color:var(--neg)}
       <h2 id="keysTitle">Alpaca API keys</h2>
       <p>Kept in this tab's memory only and sent only to Alpaca. Refreshing or closing the page clears them.</p>
     </div>
-    <form id="keysForm" autocomplete="off">
+    <div id="keysForm">
       <div class="keys-grid">
         <div class="field"><label for="keyId">API key ID</label>
           <input id="keyId" name="keyId" type="text" spellcheck="false" autocapitalize="off" placeholder="PK…" autocomplete="off"></div>
         <div class="field"><label for="secretKey">Secret key</label>
-          <div class="pw"><input id="secretKey" name="secretKey" type="password" spellcheck="false" autocapitalize="off" autocomplete="new-password" data-lpignore="true" data-1p-ignore placeholder="••••••••">
+          <div class="pw"><input id="secretKey" name="secretKey" type="password" spellcheck="false" autocapitalize="off" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="••••••••">
           <button class="btn" type="button" id="showSecret" aria-pressed="false">Show</button></div></div>
         <div class="field"><label for="env">Account</label>
           <select id="env" name="env"><option value="paper">Paper</option><option value="live">Live</option></select></div>
@@ -175,9 +175,9 @@ input[aria-invalid="true"]{border-color:var(--neg)}
         <span class="hint" id="keysHint">Tip: use paper keys, or a live key you can revoke. Alpaca keys can also place orders.</span>
         <div class="spacer"></div>
         <button class="btn" type="button" id="clearKeys">Clear</button>
-        <button class="btn primary" type="submit">Save keys</button>
+        <button class="btn primary" type="button" id="saveKeys">Save keys</button>
       </div>
-    </form>
+    </div>
   </section>
 
   <div class="status" id="status" role="status" hidden></div>
@@ -653,8 +653,8 @@ $('showSecret').onclick=e=>{
   $('secretKey').type=show?'text':'password';
   e.currentTarget.textContent=show?'Hide':'Show'; e.currentTarget.setAttribute('aria-pressed',show);
 };
-$('keysForm').onsubmit=e=>{
-  e.preventDefault();
+// not a <form>: no submit event, so browser password managers don't offer to save the secret
+function saveKeys(){
   const keyId=$('keyId').value.trim();
   // an empty secret field keeps the saved secret when only the key ID / account is unchanged
   const secretKey=$('secretKey').value.trim()||(keys&&keys.keyId===keyId?keys.secretKey:'');
@@ -663,7 +663,9 @@ $('keysForm').onsubmit=e=>{
   keys={keyId,secretKey,env:$('env').value};
   fillKeysForm(); toggleKeys(false); cache=null;
   notify(`API keys set for this tab (${keys.env}). They are not stored; refreshing the page clears them.`,'ok');
-};
+}
+$('saveKeys').onclick=saveKeys;
+$('keysForm').addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.tagName==='INPUT'){ e.preventDefault(); saveKeys(); } });
 $('clearKeys').onclick=()=>{ keys=null; cache=null; fillKeysForm(); notify('API keys cleared.'); };
 fillKeysForm();
 
@@ -769,9 +771,8 @@ if(DATA){ setRange(DATA.start,DATA.end); renderReport(DATA); } else showEmpty();
 
 // ---------- settings from the URL ----------
 // index.html#start=YYYY-MM-DD&end=YYYY-MM-DD&lookback=30        (dates work everywhere)
-// index.html#key=PK…&secret=…&env=paper                         (keys: local use only — file:// or localhost)
-// On a hosted page (e.g. GitHub Pages) keys in the URL are ignored: a ?query reaches the server's logs and any
-// URL can end up in history, bookmarks and browser sync. Keys must be typed into the API keys panel there.
+// Keys in the URL are never used: a ?query reaches the server's logs, and any URL (#hash too) is saved in
+// browser history, bookmarks and sync before this script runs. Keys must be typed into the API keys panel.
 (function fromUrl(){
   const q=new URLSearchParams(location.search), h=new URLSearchParams(location.hash.slice(1));
   const get=k=>(h.get(k)??q.get(k))?.trim()||null;
@@ -781,14 +782,8 @@ if(DATA){ setRange(DATA.start,DATA.end); renderReport(DATA); } else showEmpty();
   try{ history.replaceState(null,'',location.pathname); }catch(e){}   // wipe the URL (keys included) right away
   if(/^\d+$/.test(lookback||'')) lookbackEl.value=lookback;
   if(isDay(start)||isDay(end)) setRange(isDay(start)?start:startEl.value, isDay(end)?end:endEl.value);
-  if(!keyId&&!secretKey) return;
-  const local=location.protocol==='file:'||['localhost','127.0.0.1','[::1]'].includes(location.hostname);
-  if(!local) return notify('API keys in the URL are ignored on a hosted page. Enter them under API keys instead.','warn');
-  if(keyId&&secretKey){
-    keys={keyId,secretKey,env:get('env')==='live'?'live':'paper'};
-    cache=null; fillKeysForm();
-    $('loadBtn').click();
-  }
+  if(keyId||secretKey) notify('API keys in the URL are ignored (the URL may already be in your browser history; consider '+
+    'revoking those keys). Enter keys under API keys instead.','warn');
 })();
 </script>
 </body>
