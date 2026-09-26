@@ -1,0 +1,34 @@
+name: Update tool dates
+
+# On every push to main, set each tool's "updated" date in index.html to its folder's last commit.
+# The bot commit is pushed with GITHUB_TOKEN, which does not trigger this workflow again.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-dates
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history, so git log can find each folder's last commit
+
+      - name: Update dates in index.html
+        run: python3 .github/scripts/update_dates.py
+
+      - name: Commit if changed
+        run: |
+          git diff --quiet -- index.html && { echo "Dates already up to date"; exit 0; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update tool dates" -- index.html
+          git pull --rebase origin main
+          git push origin HEAD:main
